@@ -111,7 +111,39 @@ This document outlines the plan for migrating the HypeWriter project to a Svelte
     *   Implement chunked uploading for large files to avoid exceeding server limits.
     *   Provide real-time progress updates to the user during the processing.
 
-## VI. Testing and Deployment
+## VI. UI Consistency and Theme Implementation
+
+**Goal:** Update all application pages to match the new Severance-inspired dashboard design with consistent dark theme and cyan accents.
+
+**Steps:**
+
+1. **Audit existing pages and components:**
+   * Identify all pages that need UI updates (world, characters, outline, chapters, etc.)
+   * List components that need theme consistency (modals, forms, buttons, cards)
+   * Document current inconsistencies with the new dashboard design
+
+2. **Apply consistent theming across all pages:**
+   * Update all pages to use the Severance-inspired color scheme:
+     - `--color-cyan-bright: #00d4ff` (Primary cyan accent)
+     - `--color-dark-primary: #1a2332` (Primary dark background)
+     - `--color-dark-base: #141b26` (Base dark background)
+     - `--color-dark-secondary: #2a3441` (Secondary dark surfaces)
+   * Ensure consistent typography, spacing, and layout patterns
+   * Apply unified card styles, button designs, and interactive elements
+
+3. **Standardize navigation and layout:**
+   * Implement consistent header/navigation across all pages
+   * Ensure uniform sidebar/menu styling and behavior
+   * Standardize page layouts and content organization
+
+4. **Update component library:**
+   * Refactor shared components (buttons, inputs, cards, modals) for theme consistency
+   * Create reusable styled components to maintain design system
+   * Implement consistent hover states, transitions, and interactive feedback
+
+**Priority:** High (user experience and visual consistency)
+
+## VII. Testing and Deployment
 
 **Goal:** Ensure the application is stable, reliable, and ready for deployment.
 
@@ -129,7 +161,44 @@ This document outlines the plan for migrating the HypeWriter project to a Svelte
     *   Deploy the application to a cloud platform like Google Cloud, AWS, or Azure.
     *   Set up continuous integration and continuous deployment (CI/CD) to automate the testing and deployment process.
 
-## VII. Potential Challenges & Considerations
+## VII. Future Enhanced API Endpoints (Post-JSON Migration)
+
+**Goal:** Leverage the structured JSON data format to provide enhanced analytics, search, and management capabilities.
+
+**Planned Endpoints:**
+
+1.  **Project Analytics API:**
+    *   `GET /api/projects/{project_id}/analytics` - Comprehensive project statistics
+    *   Word count trends, character distribution, theme analysis
+    *   Genre insights, story structure completeness metrics
+    *   Perfect for dashboard widgets and project insights
+
+2.  **Advanced Search & Filter API:**
+    *   `GET /api/projects/search` - Search across all projects with filters
+    *   Query parameters: `?genre=sci-fi&themes=survival&min_words=1000&author=Smith`
+    *   Enable project discovery, organization, and collection management
+    *   Support for complex filtering on structured JSON metadata
+
+3.  **AI Re-analysis API:**
+    *   `POST /api/projects/{project_id}/reanalyze` - Re-run AI analysis on existing projects
+    *   Update JSON structures with improved extraction algorithms
+    *   Useful for enhancing old imports with latest AI models
+    *   Optional parameters for specific analysis types (characters, world, themes)
+
+4.  **Project Export API:**
+    *   `GET /api/projects/{project_id}/export` - Export projects in various formats
+    *   Query parameters: `?format=markdown&include=world,characters,outline`
+    *   Support formats: JSON, Markdown, structured text, PDF
+    *   Great for sharing, backup, and integration with other tools
+
+5.  **Bulk Operations API:**
+    *   `POST /api/projects/bulk/analyze` - Batch analysis of multiple projects
+    *   `POST /api/projects/bulk/export` - Bulk export functionality
+    *   `PUT /api/projects/bulk/update` - Bulk metadata updates
+
+**Implementation Priority:** Medium (after core functionality and UI are stable)
+
+## VIII. Potential Challenges & Considerations
 
 *   **API Changes:** The existing API might need to be adjusted to better fit the needs of the Svelte frontend.
 *   **State Management:** Choosing the right state management solution (Svelte stores, Zustand, etc.) is crucial for maintaining a reactive and efficient UI.

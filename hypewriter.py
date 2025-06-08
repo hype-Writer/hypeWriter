@@ -4,6 +4,7 @@ FastAPI web application for hypeWriter
 import os
 import json
 import re
+import requests
 from typing import List, Optional, Dict, Any, AsyncGenerator, Iterable
 
 from fastapi import (
@@ -22,6 +23,7 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
+from fastapi_mcp import FastApiMCP
 
 
 # Configuration and Agents
@@ -40,6 +42,12 @@ from core.pydantic_models import (
     GenerateChapterContentRequest,
     SaveChapterRequest,
     GenerateSceneRequest,
+    TTSRequest,
+    ChapterTTSRequest,
+    ProjectMetadata,
+    CreateProjectRequest,
+    ImportAnalysisRequest,
+    ImportNovelRequest,
 )
 
 
@@ -54,6 +62,10 @@ app.add_middleware(
     https_only=False,  # Set to True if using HTTPS
     same_site="lax",
 )
+
+# Initialize MCP integration
+mcp = FastApiMCP(app)
+mcp.mount()
 
 
 static_dir_path = "static"
@@ -75,11 +87,14 @@ else:
 # Templates (can stay after static mounting)
 templates = Jinja2Templates(directory="templates")
 
-# Ensure book_output directory exists
-os.makedirs("book_output/chapters", exist_ok=True)
+# Ensure library directory exists
+os.makedirs("library/chapters", exist_ok=True)
 
 # Agent Configuration
 agent_config = {"config_list": GEMINI_CONFIG_LIST, "temperature": 0.7}
+
+# TTS Configuration
+KOKORO_API_BASE_URL = "http://localhost:8880/v1"
 
 
 # === Helper Function for Streaming (FastAPI Version) ===
@@ -139,8 +154,22 @@ async def generate_sse_stream(
                 world_theme = re.sub(r"\n+", "\n", world_theme)
                 request.session["world_theme"] = world_theme # Use request.session
                 try:
-                    with open("book_output/world.txt", "w", encoding="utf-8") as f:
-                        f.write(world_theme)
+                    # Save to project-specific path if available
+                    current_project_id = request.session.get("current_project_id")
+                    if current_project_id:
+                        from core.project_manager import ProjectManager
+                        pm = ProjectManager()
+                        project_dir = pm.get_project_path(current_project_id)
+                        from core.text_to_json import parse_world_text_to_json
+                        world_data = parse_world_text_to_json("Current Project", world_theme)
+                        world_file = project_dir / "world.json"
+                        with open(world_file, "w", encoding="utf-8") as f:
+                            json.dump(world_data.model_dump(), f, indent=2, ensure_ascii=False)
+                    else:
+                        # Legacy fallback
+                        world_file = "library/world.txt"
+                        with open(world_file, "w", encoding="utf-8") as f:
+                            f.write(world_theme)
                     print("Final world theme saved from stream.")
                 except Exception as write_error:
                     print(f"Error saving final world theme: {write_error}")
@@ -149,8 +178,20 @@ async def generate_sse_stream(
                 characters_content = complete_content.strip()
                 request.session["characters"] = characters_content
                 try:
-                    with open("book_output/characters.txt", "w", encoding="utf-8") as f:
-                        f.write(characters_content)
+                    # Save to current project if available
+                    current_project_id = request.session.get("current_project_id")
+                    if current_project_id:
+                        from core.project_manager import ProjectManager
+                        from core.text_to_json import parse_characters_text_to_json
+                        pm = ProjectManager()
+                        project_dir = pm.get_project_path(current_project_id)
+                        characters_data = parse_characters_text_to_json(characters_content)
+                        with open(project_dir / "characters.json", "w", encoding="utf-8") as f:
+                            json.dump(characters_data.model_dump(), f, indent=2, ensure_ascii=False)
+                    else:
+                        # Legacy fallback
+                        with open("book_output/characters.txt", "w", encoding="utf-8") as f:
+                            f.write(characters_content)
                     print("Final characters saved from stream.")
                 except Exception as write_error:
                     print(f"Error saving final characters: {write_error}")
@@ -159,8 +200,20 @@ async def generate_sse_stream(
                 outline_content = complete_content.strip()
                 request.session["outline"] = outline_content
                 try:
-                    with open("book_output/outline.txt", "w", encoding="utf-8") as f:
-                        f.write(outline_content)
+                    # Save to current project if available
+                    current_project_id = request.session.get("current_project_id")
+                    if current_project_id:
+                        from core.project_manager import ProjectManager
+                        from core.text_to_json import parse_outline_text_to_json
+                        pm = ProjectManager()
+                        project_dir = pm.get_project_path(current_project_id)
+                        outline_data = parse_outline_text_to_json("Current Project", outline_content)
+                        with open(project_dir / "outline.json", "w", encoding="utf-8") as f:
+                            json.dump(outline_data.model_dump(), f, indent=2, ensure_ascii=False)
+                    else:
+                        # Legacy fallback
+                        with open("book_output/outline.txt", "w", encoding="utf-8") as f:
+                            f.write(outline_content)
                     print("Final outline saved from stream.")
                 except Exception as write_error:
                     print(f"Error saving final outline: {write_error}")
@@ -192,7 +245,7 @@ async def generate_sse_stream(
 
 # --- Helper to Load Session/File Data ---
 def load_context(request: Request) -> Dict[str, Any]:
-    """Loads world, characters, outline, chapters from session or files."""
+    """Loads world, characters, outline, chapters from session or JSON files."""
     context = {
         "world_theme": request.session.get("world_theme", ""),
         "characters": request.session.get("characters", ""),
@@ -201,37 +254,92 @@ def load_context(request: Request) -> Dict[str, Any]:
         "topic": request.session.get("topic", ""),
     }
 
-    if not context["world_theme"] and os.path.exists("book_output/world.txt"):
-        try:
-            with open("book_output/world.txt", "r", encoding="utf-8") as f:
-                context["world_theme"] = f.read().strip()
-            request.session["world_theme"] = context["world_theme"]
-        except Exception as e:
-            print(f"Error reading world.txt: {e}")
+    # Check if we're working with a specific project
+    current_project_id = request.session.get("current_project_id")
+    
+    if current_project_id:
+        # Load from project-specific JSON paths
+        from core.project_manager import ProjectManager
+        pm = ProjectManager()
+        project_dir = pm.get_project_path(current_project_id)
+        
+        # Load world from world.json
+        if not context["world_theme"] and (project_dir / "world.json").exists():
+            try:
+                with open(project_dir / "world.json", "r", encoding="utf-8") as f:
+                    world_data = json.load(f)
+                    # Convert JSON back to text format for compatibility
+                    world_theme = world_data.get("raw_content", "")
+                    if not world_theme:
+                        # Generate text from structured data as fallback
+                        world_theme = f"Genre: {world_data.get('genre', 'Unknown')}\n"
+                        world_theme += f"Setting: {world_data.get('setting_summary', 'Unknown')}\n"
+                        world_theme += f"Time Period: {world_data.get('time_period', 'Unknown')}\n"
+                        themes = world_data.get('themes', [])
+                        if themes:
+                            world_theme += f"Themes: {', '.join(themes)}\n"
+                    context["world_theme"] = world_theme.strip()
+                    request.session["world_theme"] = context["world_theme"]
+            except Exception as e:
+                print(f"Error reading world.json: {e}")
 
-    if not context["characters"] and os.path.exists("book_output/characters.txt"):
-        try:
-            with open("book_output/characters.txt", "r", encoding="utf-8") as f:
-                context["characters"] = f.read().strip()
-            request.session["characters"] = context["characters"]
-        except Exception as e:
-            print(f"Error reading characters.txt: {e}")
+        # Load characters from characters.json
+        if not context["characters"] and (project_dir / "characters.json").exists():
+            try:
+                with open(project_dir / "characters.json", "r", encoding="utf-8") as f:
+                    characters_data = json.load(f)
+                    # Convert JSON back to text format for compatibility
+                    characters_text = characters_data.get("raw_content", "")
+                    if not characters_text:
+                        # Generate text from structured data as fallback
+                        characters = characters_data.get("characters", [])
+                        if characters:
+                            characters_text = "CHARACTERS:\n\n"
+                            for char in characters:
+                                characters_text += f"Name: {char.get('name', 'Unknown')}\n"
+                                characters_text += f"Role: {char.get('role', 'Unknown')}\n"
+                                if char.get('personality'):
+                                    characters_text += f"Personality: {', '.join(char['personality'])}\n"
+                                characters_text += "\n"
+                    context["characters"] = characters_text.strip()
+                    request.session["characters"] = context["characters"]
+            except Exception as e:
+                print(f"Error reading characters.json: {e}")
 
-    if not context["outline"] and os.path.exists("book_output/outline.txt"):
-        try:
-            with open("book_output/outline.txt", "r", encoding="utf-8") as f:
-                context["outline"] = f.read().strip()
-            request.session["outline"] = context["outline"]
-        except Exception as e:
-            print(f"Error reading outline.txt: {e}")
+        # Load outline from outline.json
+        if not context["outline"] and (project_dir / "outline.json").exists():
+            try:
+                with open(project_dir / "outline.json", "r", encoding="utf-8") as f:
+                    outline_data = json.load(f)
+                    # Convert JSON back to text format for compatibility
+                    outline_text = outline_data.get("raw_content", "")
+                    if not outline_text:
+                        # Generate text from structured data as fallback
+                        story_structure = outline_data.get("story_structure", {})
+                        plot_outline = outline_data.get("plot_outline", {})
+                        outline_text = f"STORY OUTLINE\n\n"
+                        outline_text += f"Genre: {story_structure.get('genre', 'Unknown')}\n"
+                        themes = story_structure.get('themes', [])
+                        if themes:
+                            outline_text += f"Themes: {', '.join(themes)}\n"
+                        outline_text += f"\nPlot Structure:\n"
+                        outline_text += f"Beginning: {plot_outline.get('beginning', 'TBD')}\n"
+                        outline_text += f"Rising Action: {plot_outline.get('rising_action', 'TBD')}\n"
+                        outline_text += f"Climax: {plot_outline.get('climax', 'TBD')}\n"
+                        outline_text += f"Resolution: {plot_outline.get('resolution', 'TBD')}\n"
+                    context["outline"] = outline_text.strip()
+                    request.session["outline"] = context["outline"]
+            except Exception as e:
+                print(f"Error reading outline.json: {e}")
 
-    if not context["chapters"] and os.path.exists("book_output/chapters.json"):
-        try:
-            with open("book_output/chapters.json", "r", encoding="utf-8") as f:
-                context["chapters"] = json.load(f)
-            request.session["chapters"] = context["chapters"]
-        except Exception as e:
-            print(f"Error reading chapters.json: {e}")
+        # Load chapters from chapters.json (already JSON, no conversion needed)
+        if not context["chapters"] and (project_dir / "chapters.json").exists():
+            try:
+                with open(project_dir / "chapters.json", "r", encoding="utf-8") as f:
+                    context["chapters"] = json.load(f)
+                request.session["chapters"] = context["chapters"]
+            except Exception as e:
+                print(f"Error reading chapters.json: {e}")
 
     return context
 
@@ -315,8 +423,20 @@ async def finalize_world(request: Request, data: FinalizeRequestData):
         world_theme = world_theme.strip()
         world_theme = re.sub(r"\n+", "\n", world_theme)
         request.session["world_theme"] = world_theme
-        with open("book_output/world.txt", "w", encoding="utf-8") as f:
-            f.write(world_theme)
+        # Save to current project if available
+        current_project_id = request.session.get("current_project_id")
+        if current_project_id:
+            from core.project_manager import ProjectManager
+            from core.text_to_json import parse_world_text_to_json
+            pm = ProjectManager()
+            project_dir = pm.get_project_path(current_project_id)
+            world_data = parse_world_text_to_json("Current Project", world_theme)
+            with open(project_dir / "world.json", "w", encoding="utf-8") as f:
+                json.dump(world_data.model_dump(), f, indent=2, ensure_ascii=False)
+        else:
+            # Legacy fallback
+            with open("book_output/world.txt", "w", encoding="utf-8") as f:
+                f.write(world_theme)
 
         return JSONResponse({"world_theme": world_theme})
     except Exception as e:
@@ -355,8 +475,20 @@ async def save_world(request: Request, data: SaveWorldRequest):
 
     request.session["world_theme"] = world_theme_cleaned
     try:
-        with open("book_output/world.txt", "w", encoding="utf-8") as f:
-            f.write(world_theme_cleaned)
+        # Save to current project if available
+        current_project_id = request.session.get("current_project_id")
+        if current_project_id:
+            from core.project_manager import ProjectManager
+            from core.text_to_json import parse_world_text_to_json
+            pm = ProjectManager()
+            project_dir = pm.get_project_path(current_project_id)
+            world_data = parse_world_text_to_json("Current Project", world_theme_cleaned)
+            with open(project_dir / "world.json", "w", encoding="utf-8") as f:
+                json.dump(world_data.model_dump(), f, indent=2, ensure_ascii=False)
+        else:
+            # Legacy fallback
+            with open("book_output/world.txt", "w", encoding="utf-8") as f:
+                f.write(world_theme_cleaned)
         return JSONResponse({"success": True})
     except Exception as e:
         print(f"Error saving world theme manually: {e}")
@@ -429,8 +561,20 @@ async def save_characters(request: Request, data: SaveCharactersRequest):
 
     request.session["characters"] = characters_cleaned
     try:
-        with open("book_output/characters.txt", "w", encoding="utf-8") as f:
-            f.write(characters_cleaned)
+        # Save to current project if available
+        current_project_id = request.session.get("current_project_id")
+        if current_project_id:
+            from core.project_manager import ProjectManager
+            from core.text_to_json import parse_characters_text_to_json
+            pm = ProjectManager()
+            project_dir = pm.get_project_path(current_project_id)
+            characters_data = parse_characters_text_to_json(characters_cleaned)
+            with open(project_dir / "characters.json", "w", encoding="utf-8") as f:
+                json.dump(characters_data.model_dump(), f, indent=2, ensure_ascii=False)
+        else:
+            # Legacy fallback
+            with open("book_output/characters.txt", "w", encoding="utf-8") as f:
+                f.write(characters_cleaned)
         return JSONResponse({"success": True})
     except Exception as e:
         print(f"Error saving characters manually: {e}")
@@ -507,8 +651,20 @@ async def save_outline(request: Request, data: SaveOutlineRequest):
     save_warning = None
 
     try:
-        with open("book_output/outline.txt", "w", encoding="utf-8") as f:
-            f.write(outline_cleaned)
+        # Save to current project if available
+        current_project_id = request.session.get("current_project_id")
+        if current_project_id:
+            from core.project_manager import ProjectManager
+            from core.text_to_json import parse_outline_text_to_json
+            pm = ProjectManager()
+            project_dir = pm.get_project_path(current_project_id)
+            outline_data = parse_outline_text_to_json("Current Project", outline_cleaned)
+            with open(project_dir / "outline.json", "w", encoding="utf-8") as f:
+                json.dump(outline_data.model_dump(), f, indent=2, ensure_ascii=False)
+        else:
+            # Legacy fallback
+            with open("book_output/outline.txt", "w", encoding="utf-8") as f:
+                f.write(outline_cleaned)
         save_success = True
     except Exception as e:
         print(f"Error saving outline manually: {e}")
@@ -517,8 +673,18 @@ async def save_outline(request: Request, data: SaveOutlineRequest):
     try:
         chapters = parse_outline_to_chapters(outline_cleaned, num_chapters=data.num_chapters)
         request.session["chapters"] = chapters
-        with open("book_output/chapters.json", "w", encoding="utf-8") as f:
-            json.dump(chapters, f, indent=2)
+        # Save to current project if available
+        current_project_id = request.session.get("current_project_id")
+        if current_project_id:
+            from core.project_manager import ProjectManager
+            pm = ProjectManager()
+            project_dir = pm.get_project_path(current_project_id)
+            with open(project_dir / "chapters.json", "w", encoding="utf-8") as f:
+                json.dump(chapters, f, indent=2, ensure_ascii=False)
+        else:
+            # Legacy fallback
+            with open("book_output/chapters.json", "w", encoding="utf-8") as f:
+                json.dump(chapters, f, indent=2)
         num_parsed = len(chapters)
     except Exception as e:
         print(f"Error parsing/saving chapters after manual outline save: {e}")
@@ -533,7 +699,17 @@ async def save_outline(request: Request, data: SaveOutlineRequest):
 @app.post("/generate_chapters")
 async def generate_chapters(request: Request, data: GenerateChaptersRequest):
     """(Re)Generate chapters structure from existing outline file"""
-    outline_path = "book_output/outline.txt"
+    # Try current project first
+    current_project_id = request.session.get("current_project_id")
+    if current_project_id:
+        from core.project_manager import ProjectManager
+        pm = ProjectManager()
+        project_dir = pm.get_project_path(current_project_id)
+        outline_path = project_dir / "outline.json"
+        if not outline_path.exists():
+            outline_path = "book_output/outline.txt"  # Legacy fallback
+    else:
+        outline_path = "book_output/outline.txt"
 
     if not os.path.exists(outline_path):
          raise HTTPException(status_code=404, detail="Outline file not found. Please create or save an outline first.")
@@ -547,8 +723,18 @@ async def generate_chapters(request: Request, data: GenerateChaptersRequest):
     try:
         chapters = parse_outline_to_chapters(outline_content, data.num_chapters)
         request.session["chapters"] = chapters
-        with open("book_output/chapters.json", "w", encoding="utf-8") as f:
-            json.dump(chapters, f, indent=2)
+        # Save to current project if available
+        current_project_id = request.session.get("current_project_id")
+        if current_project_id:
+            from core.project_manager import ProjectManager
+            pm = ProjectManager()
+            project_dir = pm.get_project_path(current_project_id)
+            with open(project_dir / "chapters.json", "w", encoding="utf-8") as f:
+                json.dump(chapters, f, indent=2, ensure_ascii=False)
+        else:
+            # Legacy fallback
+            with open("book_output/chapters.json", "w", encoding="utf-8") as f:
+                json.dump(chapters, f, indent=2)
         return {"success": True, "num_chapters": len(chapters)}
     except Exception as e:
         print(f"Error parsing chapters in /generate_chapters: {e}")
@@ -741,6 +927,296 @@ async def get_chapters(request: Request):
     return JSONResponse({
         "chapters": context.get("chapters", [])
     })
+
+
+# TTS API Endpoints
+@app.get("/api/tts/voices")
+async def get_tts_voices():
+    """Get available TTS voices from Kokoro-FastAPI"""
+    try:
+        response = requests.get(f"{KOKORO_API_BASE_URL}/voices")
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return {"error": "Failed to fetch voices", "status_code": response.status_code}
+    except requests.exceptions.RequestException as e:
+        return {"error": f"Kokoro-FastAPI server not available: {str(e)}"}
+
+@app.post("/api/tts/generate")
+async def generate_tts(data: TTSRequest):
+    """Generate TTS audio from text"""
+    try:
+        tts_data = {
+            "model": "kokoro",
+            "voice": data.voice,
+            "input": data.text,
+            "response_format": data.response_format
+        }
+        
+        response = requests.post(
+            f"{KOKORO_API_BASE_URL}/audio/speech",
+            json=tts_data,
+            headers={"Content-Type": "application/json"}
+        )
+        
+        if response.status_code == 200:
+            # Save the audio file
+            filename = f"book_output/tts_output.{data.response_format}"
+            with open(filename, "wb") as f:
+                f.write(response.content)
+            
+            return {"success": True, "filename": filename, "size": len(response.content)}
+        else:
+            return {"error": "Failed to generate TTS", "status_code": response.status_code}
+            
+    except requests.exceptions.RequestException as e:
+        return {"error": f"Kokoro-FastAPI server not available: {str(e)}"}
+
+@app.post("/api/tts/chapter/{chapter_number}")
+async def generate_chapter_tts(chapter_number: int, data: ChapterTTSRequest):
+    """Generate TTS audio for a specific chapter"""
+    chapter_path = f"book_output/chapters/chapter_{chapter_number}.txt"
+    
+    if not os.path.exists(chapter_path):
+        raise HTTPException(status_code=404, detail=f"Chapter {chapter_number} not found")
+    
+    try:
+        # Read chapter content
+        with open(chapter_path, "r", encoding="utf-8") as f:
+            chapter_content = f.read()
+        
+        if not chapter_content.strip():
+            raise HTTPException(status_code=400, detail=f"Chapter {chapter_number} is empty")
+        
+        # Generate TTS
+        tts_data = {
+            "model": "kokoro",
+            "voice": data.voice,
+            "input": chapter_content,
+            "response_format": data.response_format
+        }
+        
+        response = requests.post(
+            f"{KOKORO_API_BASE_URL}/audio/speech",
+            json=tts_data,
+            headers={"Content-Type": "application/json"}
+        )
+        
+        if response.status_code == 200:
+            # Save the audio file
+            audio_filename = f"book_output/chapters/chapter_{chapter_number}.{data.response_format}"
+            with open(audio_filename, "wb") as f:
+                f.write(response.content)
+            
+            return {
+                "success": True, 
+                "filename": audio_filename, 
+                "size": len(response.content),
+                "chapter_number": chapter_number,
+                "voice": data.voice
+            }
+        else:
+            return {"error": "Failed to generate chapter TTS", "status_code": response.status_code}
+            
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Chapter {chapter_number} file not found")
+    except requests.exceptions.RequestException as e:
+        return {"error": f"Kokoro-FastAPI server not available: {str(e)}"}
+
+@app.get("/api/tts/status")
+async def get_tts_status():
+    """Check Kokoro-FastAPI server status"""
+    try:
+        response = requests.get(f"{KOKORO_API_BASE_URL}/health", timeout=5)
+        return {"status": "available", "server_status": response.status_code}
+    except requests.exceptions.RequestException:
+        return {"status": "unavailable", "error": "Kokoro-FastAPI server not responding"}
+
+
+# Project Management API Endpoints
+@app.get("/api/projects")
+async def list_projects():
+    """List all book projects"""
+    try:
+        from core.project_manager import ProjectManager
+        pm = ProjectManager()
+        projects = pm.list_projects()
+        return [project.dict() for project in projects]
+    except Exception as e:
+        print(f"Error listing projects: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to list projects: {e}")
+
+@app.post("/api/projects")
+async def create_project(data: CreateProjectRequest):
+    """Create a new book project"""
+    try:
+        from core.project_manager import ProjectManager
+        pm = ProjectManager()
+        project = pm.create_project(
+            title=data.title,
+            author=data.author,
+            genre=data.genre,
+            description=data.description
+        )
+        return project.dict()
+    except Exception as e:
+        print(f"Error creating project: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create project: {e}")
+
+@app.delete("/api/projects/{project_id}")
+async def delete_project(project_id: str):
+    """Delete a book project"""
+    try:
+        from core.project_manager import ProjectManager
+        pm = ProjectManager()
+        success = pm.delete_project(project_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error deleting project: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete project: {e}")
+
+@app.post("/api/projects/{project_id}/activate")
+async def activate_project(project_id: str, request: Request):
+    """Switch to working on a specific project"""
+    try:
+        from core.project_manager import ProjectManager
+        pm = ProjectManager()
+        project = pm.get_project(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Set current project in session
+        request.session["current_project_id"] = project_id
+        
+        # Clear cached data to force reload from new project
+        for key in ["world_theme", "characters", "outline", "chapters"]:
+            request.session.pop(key, None)
+        
+        return {"success": True, "project": project.dict()}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error activating project: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to activate project: {e}")
+
+@app.get("/api/projects/current")
+async def get_current_project(request: Request):
+    """Get the currently active project"""
+    current_project_id = request.session.get("current_project_id")
+    if not current_project_id:
+        return {"current_project": None}
+    
+    try:
+        from core.project_manager import ProjectManager
+        pm = ProjectManager()
+        project = pm.get_project(current_project_id)
+        if not project:
+            # Clear invalid project from session
+            request.session.pop("current_project_id", None)
+            return {"current_project": None}
+        
+        return {"current_project": project.dict()}
+    except Exception as e:
+        print(f"Error getting current project: {e}")
+        return {"current_project": None}
+
+# Import API Endpoints  
+@app.post("/api/import/analyze")
+async def analyze_import_file(data: ImportAnalysisRequest):
+    """Analyze an uploaded file for import preview"""
+    try:
+        from core.import_utils import DocumentParser
+        
+        file_path = data.file_path
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        # Parse the document
+        parser = DocumentParser()
+        if file_path.endswith('.docx'):
+            text = parser.parse_docx(file_path)
+        elif file_path.endswith('.odt'):
+            text = parser.parse_odt(file_path)
+        elif file_path.endswith('.epub'):
+            text = parser.parse_epub(file_path)
+        elif file_path.endswith('.mobi'):
+            text = parser.parse_mobi(file_path)
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported file format. Supported formats: .docx, .odt, .epub")
+        
+        # Extract metadata
+        # For EPUB files, try metadata extraction first
+        if file_path.endswith('.epub'):
+            title, author = parser.extract_epub_metadata(file_path)
+            # Fallback to content-based extraction if needed
+            if not title or not author:
+                content_title, content_author = parser.extract_title_and_author(text, file_path)
+                title = title or content_title
+                author = author or content_author
+        else:
+            title, author = parser.extract_title_and_author(text, file_path)
+        chapters = parser.detect_chapters(text)
+        
+        # Basic analysis
+        total_words = sum(len(ch['content'].split()) for ch in chapters)
+        
+        return {
+            "title": title,
+            "author": author,
+            "chapter_count": len(chapters),
+            "total_words": total_words,
+            "chapters_preview": [
+                {
+                    "chapter_number": ch["chapter_number"],
+                    "title": ch["title"],
+                    "word_count": len(ch["content"].split()),
+                    "preview": ch["content"][:200] + "..." if len(ch["content"]) > 200 else ch["content"]
+                }
+                for ch in chapters[:3]  # Show first 3 chapters only
+            ]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error analyzing import file: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to analyze file: {e}")
+
+@app.post("/api/import/novel")
+async def import_novel(data: ImportNovelRequest, request: Request):
+    """Import a novel and create a new project"""
+    try:
+        from core.project_manager import ProjectManager
+        
+        if not os.path.exists(data.file_path):
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        pm = ProjectManager()
+        project = pm.import_novel(
+            file_path=data.file_path,
+            title=data.title,
+            author=data.author,
+            genre=data.genre,
+            auto_generate_metadata=data.auto_generate_metadata,
+            agent_config=agent_config
+        )
+        
+        # Automatically activate the new project
+        request.session["current_project_id"] = project.id
+        
+        # Clear cached data
+        for key in ["world_theme", "characters", "outline", "chapters"]:
+            request.session.pop(key, None)
+        
+        return {"success": True, "project": project.dict()}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error importing novel: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to import novel: {e}")
 
 
 # --- Outline Parsing Helper ---

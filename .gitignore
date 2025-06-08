@@ -1,3 +1,13 @@
+/climateWorld
+/creative
+/imports
+/previouscode
+/ProjectINFO
+HypewriterConcept1.jpg
+HypewriterConcept2.jpg
+HypewriterConcept3(colors).jpg
+styleguide.md
+TTS_CONTEXT.md
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -172,3 +182,8 @@ cython_debug/
 
 
 book_output/*
+
+# Ignore user-generated library content but keep structure
+library/*/
+!library/.gitkeep
+!library/projects.json

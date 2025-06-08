@@ -1,0 +1,90 @@
+{
+  "004bdda9-7d94-47d4-bfd2-2afb29db4b08": {
+    "id": "004bdda9-7d94-47d4-bfd2-2afb29db4b08",
+    "title": "Aetheria",
+    "author": "User",
+    "genre": "Dystopian Science Fantasy",
+    "created_date": "2025-06-07T16:11:34.523782",
+    "last_modified": "2025-06-07T16:11:34.523782",
+    "description": "A post-apocalyptic world with toxic balloons and magical aether",
+    "chapter_count": 0,
+    "word_count": 0
+  },
+  "299a3469-2568-40a7-9623-078d03d24b1e": {
+    "id": "299a3469-2568-40a7-9623-078d03d24b1e",
+    "title": "The Ash Steppe",
+    "author": "User",
+    "genre": "Post-Apocalyptic Science Fiction",
+    "created_date": "2025-06-07T16:11:34.524376",
+    "last_modified": "2025-06-07T16:11:34.524376",
+    "description": "Environmental survival in a post-collapse world with toxic atmosphere",
+    "chapter_count": 0,
+    "word_count": 0
+  },
+  "4bf257d9-4951-4116-b589-465854f29b7e": {
+    "id": "4bf257d9-4951-4116-b589-465854f29b7e",
+    "title": "Deep Networks (rough draft)",
+    "author": "Oliver Elwood",
+    "genre": "",
+    "created_date": "2025-06-07T16:44:44.517887",
+    "last_modified": "2025-06-07T16:44:44.518594",
+    "description": "",
+    "chapter_count": 1,
+    "word_count": 1089
+  },
+  "6df9878d-6277-482f-a17e-7bbaf76a5712": {
+    "id": "6df9878d-6277-482f-a17e-7bbaf76a5712",
+    "title": "Beyond Earth",
+    "author": "Unknown Author",
+    "genre": "",
+    "created_date": "2025-06-07T16:44:44.522760",
+    "last_modified": "2025-06-07T16:45:57.240855",
+    "description": "",
+    "chapter_count": 1,
+    "word_count": 1139
+  },
+  "3fb5dbbf-6d15-4f49-b73e-8f8e72635570": {
+    "id": "3fb5dbbf-6d15-4f49-b73e-8f8e72635570",
+    "title": "Space Shifter",
+    "author": "Oliver Elwood",
+    "genre": "",
+    "created_date": "2025-06-07T16:54:15.221176",
+    "last_modified": "2025-06-07T17:10:50.297012",
+    "description": "",
+    "chapter_count": 102,
+    "word_count": 99927
+  },
+  "d892f1ff-6f00-4ee3-99c6-8d1a417a8f61": {
+    "id": "d892f1ff-6f00-4ee3-99c6-8d1a417a8f61",
+    "title": "Space Shifter (JSON Test)",
+    "author": "Oliver Elwood",
+    "genre": "Science Fiction",
+    "created_date": "2025-06-07T17:54:02.670918",
+    "last_modified": "2025-06-07T17:54:02.670918",
+    "description": "",
+    "chapter_count": 0,
+    "word_count": 0
+  },
+  "93ad0a33-b705-4ab2-91ad-8ead1af8599a": {
+    "id": "93ad0a33-b705-4ab2-91ad-8ead1af8599a",
+    "title": "Space Shifter (JSON Test)",
+    "author": "Oliver Elwood",
+    "genre": "Science Fiction",
+    "created_date": "2025-06-07T17:57:16.043329",
+    "last_modified": "2025-06-07T17:57:54.647947",
+    "description": "",
+    "chapter_count": 102,
+    "word_count": 99927
+  },
+  "b90ca09b-1bf2-4f6d-ba58-3d887c88fd8c": {
+    "id": "b90ca09b-1bf2-4f6d-ba58-3d887c88fd8c",
+    "title": "Inflection Point",
+    "author": "Oliver Elwood",
+    "genre": "Science Fiction",
+    "created_date": "2025-06-07T18:02:14.079038",
+    "last_modified": "2025-06-07T18:02:40.653602",
+    "description": "",
+    "chapter_count": 1,
+    "word_count": 4974
+  }
+}
