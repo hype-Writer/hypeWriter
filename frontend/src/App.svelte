@@ -1,137 +1,123 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  
   // Import theme
   import './lib/styles/theme.css';
   
   // Import pages
   import Dashboard from './lib/pages/Dashboard.svelte';
-  import Navigation from './lib/components/navigation.svelte';
-  import Home from './lib/pages/home.svelte';
   import World from './lib/pages/world.svelte';
   import Characters from './lib/pages/characters.svelte';
   import Outline from './lib/pages/outline.svelte';
   import Chapters from './lib/pages/chapters.svelte';
+  import ToastContainer from './lib/components/ui/ToastContainer.svelte';
+  
+  // Import MDR components
+  import Header from './lib/components/Header.svelte';
+  import DataField from './lib/components/DataField.svelte';
+  import Bins from './lib/components/Bins.svelte';
+  import Footer from './lib/components/Footer.svelte';
+  import BigExplosion from './lib/components/BigExplosion.svelte';
+  import DashboardOverlay from './lib/components/DashboardOverlay.svelte';
+  import { binManager, percentComplete } from './lib/refinery.svelte';
+  import cursorUrl from './lib/assets/cursor.svg';
 
-  // Simple reactive state for routing
-  let currentRoute = $state(window.location.pathname);
+  const cursor = `url("${cursorUrl}"), default`;
+  
+  let showBigExplosion = $state(false);
+  let hasTriggeredBigExplosion = $state(false);
 
-  onMount(() => {
-    // Listen for route changes
-    const handlePopState = () => {
-      currentRoute = window.location.pathname;
-    };
-    
-    window.addEventListener('popstate', handlePopState);
-    
-    return () => {
-      window.removeEventListener('popstate', handlePopState);
-    };
+  // MDR explosion logic
+  $effect(() => {
+    if (binManager.percentComplete >= 1 && !hasTriggeredBigExplosion) {
+      hasTriggeredBigExplosion = true;
+      
+      setTimeout(() => {
+        showBigExplosion = true;
+        
+        setTimeout(() => {
+          binManager.resetAllBins();
+          percentComplete.target = 0;
+          hasTriggeredBigExplosion = false;
+        }, 1000);
+        
+        setTimeout(() => {
+          showBigExplosion = false;
+        }, 2000);
+        
+      }, 2200);
+    }
   });
 
-  // Route matching using Svelte 5 derived
-  const isNewDashboard = $derived(currentRoute === '/' || currentRoute === '/dashboard');
-  const isLegacyRoute = $derived(['/world', '/characters', '/outline', '/chapters'].includes(currentRoute));
-  const isProjectRoute = $derived(currentRoute.startsWith('/project/'));
+
+  // Simple client-side routing
+  let currentPath = $state(window.location.pathname);
+
+  function handleNavigation() {
+    currentPath = window.location.pathname;
+  }
+
+  window.addEventListener('popstate', handleNavigation);
+
 </script>
 
-<!-- Always show navigation for legacy routes -->
-{#if isLegacyRoute}
-  <Navigation />
-{/if}
+<div class="mdr-background" style:cursor={cursor}>
+  <main>
+    <Header />
+    
+    <!-- DataField with hypeWriter overlay -->
+    <div class="datafield-container">
+      <DataField />
+      
+      <!-- Show current page content over MDR background -->
+      {#if currentPath === '/' || currentPath === ''}
+        <DashboardOverlay />
+      {:else}
+        <div class="page-overlay">
+          {#if currentPath === '/world'}
+            <World />
+          {:else if currentPath === '/characters'}
+            <Characters />
+          {:else if currentPath === '/outline'}
+            <Outline />
+          {:else if currentPath === '/chapters'}
+            <Chapters />
+          {/if}
+        </div>
+      {/if}
+    </div>
+    
+    <Bins />
+    <Footer />
+  </main>
 
-<main class="app-main" class:with-nav={isLegacyRoute}>
-  {#if isNewDashboard}
-    <!-- New Dashboard -->
-    <Dashboard />
-  {:else if isLegacyRoute}
-    <!-- Legacy routes (keeping for now during transition) -->
-    {#if currentRoute === '/world'}
-      <World />
-    {:else if currentRoute === '/characters'}
-      <Characters />
-    {:else if currentRoute === '/outline'}
-      <Outline />
-    {:else if currentRoute === '/chapters'}
-      <Chapters />
-    {/if}
-  {:else if isProjectRoute}
-    <!-- Project-specific routes (to be implemented) -->
-    <div class="project-view">
-      <h1>Project View</h1>
-      <p>Project route: {currentRoute}</p>
-      <p>This will show the specific project interface.</p>
-    </div>
-  {:else}
-    <!-- 404 or unknown route -->
-    <div class="not-found">
-      <h1>Page Not Found</h1>
-      <p>The page you're looking for doesn't exist.</p>
-      <button onclick={() => { window.history.pushState({}, '', '/'); currentRoute = '/'; }}>
-        Go to Dashboard
-      </button>
-    </div>
-  {/if}
-</main>
+  <BigExplosion show={showBigExplosion} />
+  <ToastContainer />
+</div>
 
 <style>
-  .app-main {
-    min-height: 100vh;
+  .mdr-background {
+    width: 100%;
+    height: 100vh;
+    position: relative;
   }
 
-  .app-main.with-nav {
-    padding: 2rem;
-    max-width: 1200px;
-    margin: 0 auto;
+  main {
+    height: 100vh;
+    display: grid;
+    grid-template-rows: 9rem 1fr 8rem 4rem;
+    --border: 3px solid var(--color-text-1);
   }
 
-  .project-view {
-    padding: var(--space-8);
-    max-width: 1200px;
-    margin: 0 auto;
-    text-align: center;
-    color: var(--color-text-primary);
+  .datafield-container {
+    position: relative;
+    overflow: hidden;
   }
 
-  .project-view h1 {
-    color: var(--color-text-accent);
-    margin-bottom: var(--space-4);
+  .page-overlay {
+    position: absolute;
+    inset: 0;
+    background: transparent;
+    z-index: 1;
+    overflow-y: auto;
   }
 
-  .not-found {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-    padding: var(--space-8);
-    text-align: center;
-    color: var(--color-text-primary);
-  }
-
-  .not-found h1 {
-    color: var(--color-text-accent);
-    margin-bottom: var(--space-4);
-  }
-
-  .not-found p {
-    color: var(--color-text-secondary);
-    margin-bottom: var(--space-6);
-  }
-
-  .not-found button {
-    padding: var(--space-3) var(--space-6);
-    background: var(--color-primary);
-    color: var(--color-text-primary);
-    border: none;
-    border-radius: var(--radius-lg);
-    cursor: pointer;
-    font-size: var(--font-size-base);
-    transition: all var(--transition-base);
-  }
-
-  .not-found button:hover {
-    background: var(--color-primary-hover);
-    transform: translateY(-1px);
-  }
 </style>

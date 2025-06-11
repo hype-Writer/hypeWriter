@@ -43,28 +43,6 @@
     "chapter_count": 1,
     "word_count": 1139
   },
-  "3fb5dbbf-6d15-4f49-b73e-8f8e72635570": {
-    "id": "3fb5dbbf-6d15-4f49-b73e-8f8e72635570",
-    "title": "Space Shifter",
-    "author": "Oliver Elwood",
-    "genre": "",
-    "created_date": "2025-06-07T16:54:15.221176",
-    "last_modified": "2025-06-07T17:10:50.297012",
-    "description": "",
-    "chapter_count": 102,
-    "word_count": 99927
-  },
-  "d892f1ff-6f00-4ee3-99c6-8d1a417a8f61": {
-    "id": "d892f1ff-6f00-4ee3-99c6-8d1a417a8f61",
-    "title": "Space Shifter (JSON Test)",
-    "author": "Oliver Elwood",
-    "genre": "Science Fiction",
-    "created_date": "2025-06-07T17:54:02.670918",
-    "last_modified": "2025-06-07T17:54:02.670918",
-    "description": "",
-    "chapter_count": 0,
-    "word_count": 0
-  },
   "93ad0a33-b705-4ab2-91ad-8ead1af8599a": {
     "id": "93ad0a33-b705-4ab2-91ad-8ead1af8599a",
     "title": "Space Shifter (JSON Test)",
@@ -86,5 +64,16 @@
     "description": "",
     "chapter_count": 1,
     "word_count": 4974
+  },
+  "e6b3a223-85f8-494b-9f82-9955896a89a2": {
+    "id": "e6b3a223-85f8-494b-9f82-9955896a89a2",
+    "title": "Ella Karamella",
+    "author": "Oliver Elwood",
+    "genre": "Adventure",
+    "created_date": "2025-06-10T16:55:30.812547",
+    "last_modified": "2025-06-10T16:55:30.812547",
+    "description": "Ellia is this by day, but that by night",
+    "chapter_count": 0,
+    "word_count": 0
   }
 }

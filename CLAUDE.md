@@ -2,6 +2,23 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Important Development Guidelines
+
+### CRITICAL: UI WORK LOCATION
+- **ALL UI WORK MUST BE DONE IN `/frontend` DIRECTORY ONLY**
+- **NEVER edit `static/app.css` or `static/app.js` directly** - these are auto-generated build artifacts
+- **ALWAYS work in `/frontend/src/` for all UI changes**
+- Build process automatically copies frontend assets to static/ directory
+- Editing static/ files directly will be overwritten on next build
+
+### NO MOCK DATA
+- **NEVER use mock/fake/hardcoded data** in components
+- **ALWAYS connect to real backend APIs** when displaying data
+- **NO fake placeholders or sample data** - this makes it impossible to see what's actually working
+- If an API endpoint doesn't exist yet, create it or ask about it first
+- All data must come from the FastAPI backend to validate real functionality
+- Mock data hides broken integrations and incomplete features
+
 ## Development Commands
 
 ### Backend Development
@@ -19,6 +36,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Backend: `pip install -r requirements.txt`
 - Frontend: `cd frontend && npm install`
 - Required: `.env` file with `GOOGLE_API_KEY`, `GEMINI_MODEL_NAME`, and `APP_SECRET_KEY`
+- TTS Feature: Requires Kokoro-FastAPI server running on `localhost:8880`
 
 ## Architecture Overview
 
@@ -28,7 +46,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Main server**: `hypewriter.py` - FastAPI app with Jinja2 templating
 - **Core modules**: `core/` directory contains agents, config, prompts, and data models
 - **AI Integration**: Google Gemini via `google-generativeai`
-- **Storage**: File-based in `book_output/` directory (world.txt, characters.txt, outline.json, chapters/)
+- **Storage**: File-based in `library/` directory with project-specific folders (world.txt, characters.txt, outline.json, chapters/)
 - **Sessions**: Server-side session management with starlette-session
 
 ### Frontend (Svelte 5/TypeScript)
@@ -70,52 +88,78 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **TTS Usage**
 - Start Kokoro-FastAPI: `cd ~/dev/orbat/kokoro-fastapi && ./start-cpu.sh`
 - TTS controls appear automatically in chapter view when server is available
-- Generated audio files saved to `book_output/chapters/chapter_X.mp3`
+- Generated audio files saved to `library/{project_id}/chapters/chapter_X.mp3`
 
 ### Project Structure
 - `hypewriter.py`: Main FastAPI application with MCP and TTS endpoints
 - `core/`: Backend logic (agents, config, prompts, models)
-- `frontend/`: Svelte 5 SPA source code with TTS integration
+- `frontend/`: Svelte 5 SPA source code with TTS and MDR integration
 - `static/` + `templates/`: Built frontend assets served by FastAPI
-- `book_output/`: Generated novel content storage (includes audio files)
-- `ProjectINFO/`: Project documentation and planning materials
+- `library/`: Project-based novel content storage with individual project directories (includes audio files)
+- `library/projects.json`: Project registry and metadata
+- `zclaudestuff/`: Contains TTS integration docs and future feature roadmap
 
-## CURRENT STATUS: SVELTE 5 MIGRATION & FRONTEND INTEGRATION COMPLETE
+## 🎯 CURRENT PROJECT STATUS
 
-### ✅ COMPLETED: Full Svelte 5 Migration & Production Integration
-- **Svelte 5 Runes**: All components converted to proper Svelte 5 syntax using `$state`, `$derived`, `$props`
-- **Compilation Issues Fixed**: Removed `$state` usage from `.ts` files, fixed all rune-related errors
-- **Accessibility Improvements**: Fixed tabindex and keyboard navigation for Card and Modal components
-- **Dashboard**: New Severance-inspired dark theme with cyan accents fully functional
-- **Production Build**: Frontend successfully built and integrated with FastAPI backend
+### ✅ COMPLETED FEATURES
+- **Multi-Project System**: Full support for creating, importing, and managing multiple novel projects
+- **MDR Background Integration**: Complete Severance-themed animation system integrated as interactive background
+- **Real-Time Dashboard**: Progress tracking based on actual file content analysis with working navigation
+- **Novel Import System**: Support for .docx, .odt, .epub, .mobi files with automatic chapter detection
+- **TTS Integration**: High-quality audiobook generation with 60+ voice options via Kokoro-FastAPI
+- **Svelte 5 Migration**: Modern component architecture using Runes API with proper routing
+- **Production Build System**: Automated frontend build process integrated with FastAPI backend
+- **Core Functionality Restored**: All hypewriter pages (world, characters, outline, chapters) now visible and accessible
 
-### Key Technical Fixes:
-- **App.svelte**: Converted to proper Svelte 5 runes (`$state` for routing, `$derived` for computed values)
-- **Dashboard.svelte**: Removed store dependencies, uses local `$state`, converted `$:` to `$derived`
-- **Card.svelte**: Fixed accessibility with semantic HTML (`<button>` vs `<div>` based on clickability)
-- **CreateProjectModal.svelte**: Now uses `$props()` for props, `$state` for form data
-- **Store Migration**: Removed problematic `$state` usage from TypeScript files
+### 🔧 ARCHITECTURE HIGHLIGHTS
+- **Hybrid UI/UX**: Traditional dashboard functionality seamlessly integrated with animated background
+- **Smart Interactions**: Selective pointer-events allow both dashboard functionality and background interaction
+- **Real Data Loading**: No mock data - all components connect to actual FastAPI endpoints
+- **Project Isolation**: Each project stored in separate directories with complete data separation
+- **Functional Routing**: Client-side navigation between dashboard and writing sections working properly
 
-### Build & Integration Process:
-- **Build Command**: `cd frontend && npm run build`
-- **Auto-Integration**: Build automatically copies files to backend:
-  - `dist/index.html` → `templates/index.html`
-  - `dist/app.js` → `static/app.js`
-  - `dist/app.css` → `static/app.css`
-- **Backend Integration**: FastAPI serves built assets with correct `/static/` paths
+### 🚧 NEXT DEVELOPMENT PRIORITIES
 
-### Current Deployment Status:
-- **Development**: `cd frontend && npm run dev` → http://localhost:5173/static/
-- **Production**: `uvicorn hypewriter:app --reload` → http://localhost:8000
-- **Files Ready**: All static assets built and copied to backend directories
+#### **High Priority - UI/Design Updates**
+1. **Update Page Layouts**: Convert characters.svelte, outline.svelte, chapters.svelte to new Severance theme
+2. **Modernize Components**: Replace Bootstrap classes with new design system components
+3. **Responsive Design**: Ensure all pages work properly on mobile devices
+4. **Clean CSS**: Remove unused selectors and streamline stylesheets
 
-### Next Session Tasks:
-1. **Restart FastAPI backend** to load new UI: `uvicorn hypewriter:app --reload`
-2. **Verify production build** at http://localhost:8000
-3. **Re-implement store functionality** with proper Svelte 5 patterns when needed
-4. **Connect dashboard to actual backend API endpoints**
+#### **Medium Priority - Core Functionality**
+1. **AI Workflow Testing**: Verify end-to-end AI functionality (world → characters → outline → chapters)
+2. **Performance Optimization**: Improve loading times and reduce bundle size
+3. **Error Handling**: Better error states and user feedback throughout the application
+4. **Accessibility**: Fix accessibility warnings from build process
 
-### Theme Colors (Severance TV Show Inspired):
+#### **Lower Priority - Polish**
+1. **Code Efficiency**: Refactor and optimize component logic
+2. **Type Safety**: Improve TypeScript coverage and fix type warnings
+3. **Testing**: Add unit tests for critical functionality
+4. **Documentation**: Update inline code documentation
+
+## Key Integrations
+
+### ✅ MDR Background Animation System (COMPLETED)
+- **Severance-themed UI**: Full integration of interactive data cell and bin animations as background layer
+- **Seamless Interaction**: Dashboard functionality works alongside background number interaction
+- **Complete Component Migration**: All MDR components (Header, DataField, DataCell, Bins, etc.) successfully integrated
+- **Hybrid Experience**: Users can work on writing projects while MDR animations run subtly in background
+- **Smart Pointer Events**: Selective interactivity allows both dashboard clicks and background number selection
+- **Path Aliases**: Vite configured with `$lib` aliases for clean imports
+- **Theme Integration**: MDR color variables (WO, FC, DR, MA) fully integrated into design system
+- **Production Ready**: Built and deployed with ~125KB bundle size
+
+## Key Features
+1. **Smart Project Management**: Create, import, and manage multiple novel projects with real progress tracking
+2. **Real Data Dashboard**: Progress bars and completion indicators based on actual file content analysis
+3. **Novel Import System**: Import from `.docx`, `.odt`, `.epub`, `.mobi` files with automatic chapter detection
+4. **Multi-format Export**: Export projects to various formats
+5. **TTS Integration**: Convert chapters to high-quality audio with 60+ voice options
+6. **Seamless Navigation**: Client-side routing between world building, character creation, outlining, and chapter writing
+7. **Content Validation**: Intelligent file checking with fallback mechanisms for different file formats
+
+## Theme Colors (Severance TV Show Inspired)
 ```css
 --color-cyan-bright: #00d4ff;      /* Primary cyan accent */
 --color-dark-primary: #1a2332;     /* Primary dark background */
@@ -123,8 +167,35 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 --color-dark-secondary: #2a3441;   /* Secondary dark surfaces */
 ```
 
-**IMPORTANT**: 
-- The frontend is now fully Svelte 5 compliant with proper runes usage
-- Production build is complete and ready for deployment
-- No compilation errors remaining - all accessibility warnings addressed
-- Backend integration successful - restart FastAPI to see new UI
+## Important Notes
+- **UI Development**: ALL frontend work must be done in `/frontend/src/` - NEVER edit `static/app.css` or `static/app.js`
+- **Real Data Only**: NO mock data allowed - all components must connect to real FastAPI endpoints
+- **Current State**: Core functionality restored but UI design needs updating for consistency
+- Frontend is fully Svelte 5 compliant with modern Runes syntax (`$state`, `$derived`, `$props`)
+- Production build requires `npm run build` to integrate with FastAPI backend
+- Dashboard provides real-time project progress based on actual file content analysis
+- Project uses `library/` directory structure with project-specific folders
+- All generated content is organized by project ID in separate directories
+- Progress tracking validates actual content length and structure, not just file existence
+
+## 📋 DEVELOPMENT WORKFLOW
+
+### **For UI/Design Work:**
+1. Work in `/frontend/src/` directory only
+2. Use existing Severance theme components (Card, Button) from `/frontend/src/lib/components/ui/`
+3. Follow established color variables and spacing system in `/frontend/src/lib/styles/theme.css`
+4. Build with `npm run build` to integrate changes
+5. Test both dashboard functionality and background MDR interaction
+
+### **For Core Functionality:**
+1. Backend AI agents and prompts are in `/core/` directory
+2. API endpoints are in `hypewriter.py`
+3. Test streaming responses and file persistence
+4. Verify multi-project isolation and session management
+
+## Dashboard Data Loading Logic
+- **World Progress**: Checks `world.json` or `world.txt` for content >50 characters
+- **Characters Progress**: Validates `characters.json` or `characters.txt` for character data or substantial content
+- **Outline Progress**: Examines `outline.json` or `outline.txt` for outline structure or content >50 characters
+- **Chapter Progress**: Counts actual chapters from `chapters.json` or individual chapter files in chapters directory
+- **Fallback Handling**: Gracefully handles missing files, parsing errors, and different file formats

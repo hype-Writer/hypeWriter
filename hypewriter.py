@@ -929,6 +929,112 @@ async def get_chapters(request: Request):
     })
 
 
+# Library API Endpoints
+@app.get("/api/library")
+async def get_library():
+    """Get all projects in the library"""
+    try:
+        from core.project_manager import ProjectManager
+        project_manager = ProjectManager()
+        projects = project_manager.list_projects()
+        return [project.dict() for project in projects]
+    except Exception as e:
+        print(f"Error fetching library: {e}")
+        return []
+
+@app.post("/api/library/create")
+async def create_project(request: Request, data: CreateProjectRequest):
+    """Create a new project in the library"""
+    try:
+        from core.project_manager import ProjectManager
+        project_manager = ProjectManager()
+        project = project_manager.create_project(
+            title=data.title,
+            author=data.author,
+            genre=data.genre,
+            description=data.description
+        )
+        return project.dict()
+    except Exception as e:
+        print(f"Error creating project: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create project: {e}")
+
+@app.post("/api/library/switch/{project_id}")
+async def switch_project(request: Request, project_id: str):
+    """Switch to a different project"""
+    try:
+        from core.project_manager import ProjectManager
+        project_manager = ProjectManager()
+        
+        # Check if project exists
+        project = project_manager.get_project(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Clear existing session data
+        for key in ["world_theme", "characters", "outline", "chapters", "topic"]:
+            request.session.pop(key, None)
+        
+        # Set current project in session
+        request.session["current_project_id"] = project_id
+        
+        # Load project data into session using existing load_context logic
+        context = load_context(request)
+        
+        return {"success": True, "project_id": project_id, "project": project.dict()}
+    except Exception as e:
+        print(f"Error switching project: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to switch project: {e}")
+
+@app.post("/api/library/cleanup")
+async def cleanup_library():
+    """Clean up orphaned entries in projects.json that don't have corresponding directories"""
+    try:
+        from core.project_manager import ProjectManager
+        import os
+        project_manager = ProjectManager()
+        
+        # Load current projects index
+        projects_data = project_manager._load_projects_index()
+        library_path = project_manager.base_path
+        
+        # Get list of actual project directories
+        existing_dirs = set()
+        for item in os.listdir(library_path):
+            item_path = library_path / item
+            if item_path.is_dir() and not item.startswith('.') and item not in ['chapters', 'imports']:
+                # Extract project ID from directory name (last part after last dash)
+                if '-' in item:
+                    project_id_part = item.split('-')[-1]
+                    # Find matching project ID in projects.json
+                    for full_id in projects_data.keys():
+                        if full_id.startswith(project_id_part):
+                            existing_dirs.add(full_id)
+                            break
+        
+        # Remove orphaned entries
+        cleaned_projects = {}
+        removed_count = 0
+        for project_id, project_data in projects_data.items():
+            if project_id in existing_dirs:
+                cleaned_projects[project_id] = project_data
+            else:
+                removed_count += 1
+                print(f"Removing orphaned project: {project_data.get('title', project_id)}")
+        
+        # Save cleaned projects index
+        project_manager._save_projects_index(cleaned_projects)
+        
+        return {
+            "success": True, 
+            "removed_count": removed_count,
+            "remaining_count": len(cleaned_projects)
+        }
+    except Exception as e:
+        print(f"Error cleaning up library: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to cleanup library: {e}")
+
+
 # TTS API Endpoints
 @app.get("/api/tts/voices")
 async def get_tts_voices():
